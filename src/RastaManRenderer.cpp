@@ -95,13 +95,19 @@ void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
   float bz = (v0.z()*b1 + v1.z()*b2 + v2.z()*b0)*doubleAreaInv;
   float cz = (v0.z()*c1 + v1.z()*c2 + v2.z()*c0)*doubleAreaInv;
 
+  // Encode half pixel offsets in c
+  c0 += (a0 + b0) * .5f;
+  c1 += (a1 + b1) * .5f;
+  c2 += (a2 + b2) * .5f;
+  cz += (az + bz) * .5f;
+
   for (int y = box.min().y(); y <= box.max().y(); ++y) {
     for (int x = box.min().x(); x <= box.max().x(); ++x) {
-      float e0 = a0*(x+.5f) + b0*(y+.5f) + c0;
-      float e1 = a1*(x+.5f) + b1*(y+.5f) + c1;
-      float e2 = a2*(x+.5f) + b2*(y+.5f) + c2;
+      float e0 = a0*x + b0*y + c0;
+      float e1 = a1*x + b1*y + c1;
+      float e2 = a2*x + b2*y + c2;
       if (e0 > 0 && e1 > 0 && e2 > 0) {
-        float z = az*(x+.5f) + bz*(y+.5f) + cz;
+        float z = az*x + bz*y + cz;
         fragments.push_back(Vector3f(x, y, z));
       }
     }
@@ -148,7 +154,8 @@ void RastaManRenderer::DrawTriangle(const Vector4f& v0,
   /*
    * Rasterization
    */
-  std::vector<Vector3f> fragments;
+  static std::vector<Vector3f> fragments(1024);
+  fragments.clear();
   RasterizeTriangle(c[0], c[1], c[2], fragments);
 
   for (std::vector<Vector3f>::iterator it = fragments.begin();
