@@ -1,0 +1,13 @@
+*.bak
+*~
+*.exe
+*.dll
+obj
+*.opensdf
+*.sdf
+*.pdb
+*.sln
+*.suo
+*.vcxproj
+*.vcxproj.*
+
