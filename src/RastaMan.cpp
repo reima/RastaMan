@@ -1,9 +1,16 @@
-#include "RenderPipeline.hpp"
-#include "RenderSurface.hpp"
+#include "OpenGLRenderer.hpp"
+#include "RastaManRenderer.hpp"
+
+#include <boost/scoped_ptr.hpp>
 
 #include <cmath>
 #include <fstream>
 #include <iostream>
+
+#include <GL/glew.h>
+#include <GL/freeglut.h>
+
+#include <Eigen/Geometry>
 
 using namespace Eigen;
 
@@ -45,42 +52,129 @@ void LoadSimpleObj(const char* filename,
   }
 }
 
+const int width = 512;
+const int height = 512;
+
 std::vector<Vector3f> vertices;
 std::vector<int> indices;
+Matrix4f modelView;
+boost::shared_ptr<RenderTarget> rt(new RenderTarget(width, height));
 
-const int width = 1024;
-const int height = 1024;
+enum {
+  RM_OPENGL,
+  RM_RASTAMAN,
+  RM_DIFFERENCE
+} renderMode = RM_OPENGL;
 
-#include <GL/glut.h>
+const int kRendererCount = 2;
+boost::scoped_ptr<IRenderer> renderer[kRendererCount];
+
+int frames = 0;
+int fps = -1;
 
 void resize(int width, int height) {
-  glViewport(0, 0, width, height);
+  for (int i = 0; i < kRendererCount; ++i) {
+    renderer[i]->SetViewport(0, 0, width, height);
+  }
+}
+
+void keyboard(unsigned char key, int x, int y) {
+  if (key == 'o') {
+    renderMode = RM_OPENGL;
+    glutPostRedisplay();
+  } else if (key == 'r') {
+    renderMode = RM_RASTAMAN;
+    glutPostRedisplay();
+  } else if (key == 'd') {
+    renderMode = RM_DIFFERENCE;
+    glutPostRedisplay();
+  } else if (key == 27) {
+    glutLeaveMainLoop();
+  }
+}
+
+void timer(int) {
+  fps = frames;
+  frames = 0;
+  glutTimerFunc(1000, timer, 0);
+}
+
+void update() {
+  Matrix4f rotation;
+  rotation << AngleAxisf(.003f, Vector3f::UnitY()).matrix(),
+              Vector3f::Zero(), RowVector4f::UnitW();
+  modelView *= rotation;
+  glutPostRedisplay();
+}
+
+void drawScene(IRenderer* renderer) {
+  const float clearColor[4] = { 0, 0, 0, 0 };
+  renderer->Clear(clearColor);
+  renderer->SetModelViewMatrix(modelView);
+  renderer->DrawTriangles(&vertices[0], &indices[0], indices.size());
 }
 
 void render() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  glBegin(GL_TRIANGLES);
-  for (int i = 0; i < indices.size(); ++i) {
-    glVertex3fv(vertices[indices[i]].data());
-  }
-  glEnd();
-
-  boost::scoped_array<char> data(new char[width*height*3]);
-  glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data.get());
-
-  std::ofstream ofs("imageGL.ppm");
-  ofs << "P6\n";
-  ofs << width << " " << height << "\n";
-  ofs << 255 << "\n";
-  for (int y = height - 1; y >= 0; --y) {
-    ofs.write(&data[width*y*3], width*3);
+  if (renderMode == RM_OPENGL || renderMode == RM_DIFFERENCE) {
+    drawScene(renderer[0].get());
   }
 
-  exit(0);
+  glDisable(GL_DEPTH_TEST);
+  if (renderMode == RM_RASTAMAN || renderMode == RM_DIFFERENCE) {
+    drawScene(renderer[1].get());
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glRasterPos2f(-1.f, 1.f);
+    glPixelZoom(1.f, -1.f);
+    if (renderMode == RM_DIFFERENCE) {
+      glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+      glBlendFunc(GL_ONE, GL_ONE);
+      glEnable(GL_BLEND);
+    }
+    glDrawPixels(width, height, GL_RGBA, GL_FLOAT,
+      reinterpret_cast<const GLvoid*>(rt->GetBackBuffer()->GetPixels()));
+    glDisable(GL_BLEND);
+  }
+
+  const GLubyte* text;
+  switch (renderMode) {
+    case RM_OPENGL: text = (const GLubyte*)"OpenGL"; break;
+    case RM_RASTAMAN: text = (const GLubyte*)"RastaMan"; break;
+    case RM_DIFFERENCE: text = (const GLubyte*)"Difference"; break;
+  }
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glRasterPos2i(-1, -1);
+  glutBitmapString(GLUT_BITMAP_HELVETICA_10, text);
+
+  char fpsText[100];
+  sprintf(fpsText, " %d FPS", fps);
+  glutBitmapString(GLUT_BITMAP_HELVETICA_10, (const GLubyte*)fpsText);
+
+  glEnable(GL_DEPTH_TEST);
+
+  //boost::scoped_array<char> data(new char[width*height*3]);
+  //glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data.get());
+
+  //std::ofstream ofs("image.ppm");
+  //ofs << "P6\n";
+  //ofs << width << " " << height << "\n";
+  //ofs << 255 << "\n";
+  //for (int y = height - 1; y >= 0; --y) {
+  //  ofs.write(&data[width*y*3], width*3);
+  //}
+
+  ++frames;
+  glutSwapBuffers();
 }
 
 int main(int argc, char* argv[]) {
+  renderer[0].reset(new OpenGLRenderer());
+  renderer[1].reset(new RastaManRenderer(rt));
+
   Vector3f min, max;
   LoadSimpleObj(argv[1], vertices, indices, min, max);
   std::cout << vertices.size() << " vertices, "
@@ -94,58 +188,42 @@ int main(int argc, char* argv[]) {
   std::cout << "Mid: (" << mid.x() << " " << mid.y() << " " << mid.z() << ")" << std::endl;
   const float scale = 1.9f / (std::max(extents[0], extents[1]));
   std::cout << "Scale: " << scale << std::endl;
-  Matrix4f modelView;
   modelView << scale, 0.0f, 0.0f, -scale*mid.x(),
                0.0f, scale, 0.0f, -scale*mid.y(),
                0.0f, 0.0f, scale, 0.0f,
                0.0f, 0.0f, 0.0f, 1.0f;
 
+  glutInit(&argc, argv);
+  glutInitWindowSize(width, height);
+  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
+  glutCreateWindow("RastaMan");
+  glutDisplayFunc(render);
+  glutReshapeFunc(resize);
+  glutKeyboardFunc(keyboard);
+  glutIdleFunc(update);
+  glutTimerFunc(1000, timer, 0);
 
-  if (argc > 2) {
-    glutInit(&argc, argv);
-    glutInitWindowSize(width, height);
-    glutInitDisplayMode(GLUT_RGBA | GLUT_SINGLE | GLUT_DEPTH);
-    glutCreateWindow("OpenGL ground trouth");
-    glutDisplayFunc(render);
-    glutReshapeFunc(resize);
+  glewInit();
 
-    glClearColor(0, 0, 0, 0);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadMatrixf(modelView.data());
+  glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
 
-    glutMainLoop();
-  } else {
-    RenderPipeline pipeline;
-    boost::shared_ptr<RenderSurface> surface(new RenderSurface(width, height));
-    surface->Clear(Vector4f(0, 0, 0, 0));
+  glEnable(GL_CULL_FACE);
+  glFrontFace(GL_CW);
 
-    pipeline.SetRenderSurface(surface);
-    pipeline.SetViewport(0, 0, width, height);
+  glutMainLoop();
 
-    pipeline.SetModelViewMatrix(modelView);
-
-//    for (int j = 0; j < 100; ++j) {
-      for (int i = 0; i < indices.size(); i += 3) {
-        pipeline.DrawTriangle(
-          (Vector4f() << vertices[indices[i]], 1.0f).finished(),
-          (Vector4f() << vertices[indices[i+1]], 1.0f).finished(),
-          (Vector4f() << vertices[indices[i+2]], 1.0f).finished()
-        );
-      }
-//    }
-
-    std::ofstream ofs("image.ppm");
-    ofs << "P6\n";
-    ofs << surface->GetWidth() << " " << surface->GetHeight() << "\n";
-    ofs << 255 << "\n";
-    for (int y = 0; y < surface->GetHeight(); ++y) {
-      for (int x = 0; x < surface->GetWidth(); ++x) {
-        Matrix<unsigned char, 3, 1> col =
-          ((*surface)(x, y).head<3>() * 255).eval().cast<unsigned char>();
-        ofs.write(reinterpret_cast<char *>(col.data()), 3);
-      }
-    }
-  }
+  //std::ofstream ofs("image.ppm");
+  //ofs << "P6\n";
+  //ofs << surface->GetWidth() << " " << surface->GetHeight() << "\n";
+  //ofs << 255 << "\n";
+  //for (int y = 0; y < surface->GetHeight(); ++y) {
+  //  for (int x = 0; x < surface->GetWidth(); ++x) {
+  //    Matrix<unsigned char, 3, 1> col =
+  //      ((*surface)(x, y).head<3>() * 255).eval().cast<unsigned char>();
+  //    ofs.write(reinterpret_cast<char *>(col.data()), 3);
+  //  }
+  //}
 
   return 0;
 }
