@@ -2,34 +2,47 @@
 
 #include <algorithm>
 
-RenderSurface::RenderSurface(int width, int height)
-    : width_(width), height_(height), pixels_(new Eigen::Vector4f[width*height]) {
+template<typename Component>
+RenderSurface<Component>::RenderSurface(int width, int height)
+    : width_(width), height_(height), pixels_(new Component[width*height]) {
 }
 
-RenderSurface::~RenderSurface() {
+template<typename Component>
+RenderSurface<Component>::~RenderSurface() {
 }
 
-int RenderSurface::GetWidth() const {
+template<typename Component>
+int RenderSurface<Component>::GetWidth() const {
   return width_;
 }
 
-int RenderSurface::GetHeight() const {
+template<typename Component>
+int RenderSurface<Component>::GetHeight() const {
   return height_;
 }
 
-void RenderSurface::Clear(const Eigen::Vector4f& clearColor) {
+template<typename Component>
+void RenderSurface<Component>::Clear(const Component& clearColor) {
   std::fill(&pixels_[0], &pixels_[width_*height_], clearColor);
 }
 
-const Eigen::Vector4f* RenderSurface::GetPixels() const {
+template<typename Component>
+const Component* RenderSurface<Component>::GetPixels() const {
   return pixels_.get();
 }
 
-const Eigen::Vector4f& RenderSurface::operator()(int x, int y) const {
+template<typename Component>
+const Component& RenderSurface<Component>::operator()(int x, int y) const {
   return pixels_[width_*y+x];
 }
 
-Eigen::Vector4f& RenderSurface::operator()(int x, int y) {
+template<typename Component>
+Component& RenderSurface<Component>::operator()(int x, int y) {
   return pixels_[width_*y+x];
 }
 
+// Explicit template instantiations
+template class RenderSurface<float>;
+template class RenderSurface<Eigen::Vector2f>;
+template class RenderSurface<Eigen::Vector3f>;
+template class RenderSurface<Eigen::Vector4f>;
