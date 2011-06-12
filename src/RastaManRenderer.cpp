@@ -59,6 +59,13 @@ Vector4f RastaManRenderer::ProcessFragment(const Vector3f& position) {
   return Vector4f(1, 1, 1, 1);
 }
 
+inline void SetupEdgeEquation(const Vector3f& v1, const Vector3f& v2,
+                              float* a, float* b, float* c) {
+  *a = v1.y() - v2.y();
+  *b = v2.x() - v1.x();
+  *c = (*a * (v1.x() + v2.x()) + *b * (v1.y() + v2.y())) * -.5f;
+}
+
 void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
                                          const Vector3f& v1,
                                          const Vector3f& v2,
@@ -72,42 +79,29 @@ void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
   if (box.isEmpty()) return;
 
   // Edge equations setup
-  float a0, b0, c0;
-  a0 = v0.y() - v1.y();
-  b0 = v1.x() - v0.x();
-  c0 = (a0*(v0.x() + v1.x()) + b0*(v0.y() + v1.y())) * -.5f;
-  float a1, b1, c1;
-  a1 = v1.y() - v2.y();
-  b1 = v2.x() - v1.x();
-  c1 = (a1*(v1.x() + v2.x()) + b1*(v1.y() + v2.y())) * -.5f;
-  float a2, b2, c2;
-  a2 = v2.y() - v0.y();
-  b2 = v0.x() - v2.x();
-  c2 = (a2*(v0.x() + v2.x()) + b2*(v0.y() + v2.y())) * -.5f;
+  Array4f a, b, c;
+  SetupEdgeEquation(v0, v1, &a[0], &b[0], &c[0]);
+  SetupEdgeEquation(v1, v2, &a[1], &b[1], &c[1]);
+  SetupEdgeEquation(v2, v0, &a[2], &b[2], &c[2]);
 
   // Cull back faces
-  const float doubleArea = c0 + c1 + c2;
+  const float doubleArea = c[0] + c[1] + c[2];
   if (doubleArea <= 0) return;
 
   // Interpolation equation setup
   const float doubleAreaInv = 1.f/doubleArea;
-  float az = (v0.z()*a1 + v1.z()*a2 + v2.z()*a0)*doubleAreaInv;
-  float bz = (v0.z()*b1 + v1.z()*b2 + v2.z()*b0)*doubleAreaInv;
-  float cz = (v0.z()*c1 + v1.z()*c2 + v2.z()*c0)*doubleAreaInv;
+  a[3] = (v0.z()*a[1] + v1.z()*a[2] + v2.z()*a[0])*doubleAreaInv;
+  b[3] = (v0.z()*b[1] + v1.z()*b[2] + v2.z()*b[0])*doubleAreaInv;
+  c[3] = (v0.z()*c[1] + v1.z()*c[2] + v2.z()*c[0])*doubleAreaInv;
 
   // Encode half pixel offsets in c
-  c0 += (a0 + b0) * .5f;
-  c1 += (a1 + b1) * .5f;
-  c2 += (a2 + b2) * .5f;
-  cz += (az + bz) * .5f;
+  c.head<3>() += (a.head<3>() + b.head<3>()) * .5f;
 
   for (int y = box.min().y(); y <= box.max().y(); ++y) {
     for (int x = box.min().x(); x <= box.max().x(); ++x) {
-      float e0 = a0*x + b0*y + c0;
-      float e1 = a1*x + b1*y + c1;
-      float e2 = a2*x + b2*y + c2;
-      if (e0 > 0 && e1 > 0 && e2 > 0) {
-        float z = az*x + bz*y + cz;
+      Vector4f e = a*x + b*y + c;
+      if (e[0] > 0 && e[1] > 0 && e[2] > 0) {
+        float z = e[3];
         fragments.push_back(Vector3f(x, y, z));
       }
     }
