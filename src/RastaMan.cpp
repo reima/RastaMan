@@ -103,7 +103,7 @@ void update() {
   Matrix4f rotation;
   rotation << AngleAxisf(.003f, Vector3f::UnitY()).matrix(),
               Vector3f::Zero(), RowVector4f::UnitW();
-  modelView *= rotation;
+  modelView = rotation * modelView;
   glutPostRedisplay();
 }
 
