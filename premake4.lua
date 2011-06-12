@@ -10,6 +10,8 @@ solution "RastaMan"
       includedirs { "extern/glut/include", "extern/glew/include" }
       libdirs { "extern/glut/lib", "extern/glew/lib" }
       links { "glew32" }
+    elseif os.is("linux") then
+      links { "GL", "GLEW", "glut" }
     end
 
     configuration "Debug"
