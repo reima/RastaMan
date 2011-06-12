@@ -1,5 +1,5 @@
 solution "RastaMan"
-  configurations { "Debug", "Release" }
+  configurations { "Debug", "Release", "Profile" }
 
   project "RastaMan"
     kind "ConsoleApp"
@@ -21,4 +21,8 @@ solution "RastaMan"
     configuration "Release"
       defines { "NDEBUG" }
       flags { "Optimize" }
+
+    configuration "Profile"
+      defines { "NDEBUG" }
+      flags { "Optimize", "Symbols" }
 
