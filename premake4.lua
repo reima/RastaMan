@@ -4,7 +4,7 @@ solution "RastaMan"
   project "RastaMan"
     kind "ConsoleApp"
     language "C++"
-    files { "*.hpp", "*.cpp" }
+    files { "src/*.hpp", "src/*.cpp" }
     includedirs { "extern/eigen3" }
 
     configuration "Debug"
