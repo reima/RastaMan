@@ -52,13 +52,14 @@ void LoadSimpleObj(const char* filename,
   }
 }
 
-const int width = 512;
-const int height = 512;
+const int initialWidth = 512;
+const int initialHeight = 512;
 
 std::vector<Vector3f> vertices;
 std::vector<int> indices;
 Matrix4f modelView;
-boost::shared_ptr<RenderTarget> rt(new RenderTarget(width, height));
+boost::shared_ptr<RenderTarget> rt(
+  new RenderTarget(initialWidth, initialHeight));
 
 enum {
   RM_OPENGL,
@@ -76,6 +77,8 @@ void resize(int width, int height) {
   for (int i = 0; i < kRendererCount; ++i) {
     renderer[i]->SetViewport(0, 0, width, height);
   }
+  rt.reset(new RenderTarget(width, height));
+  dynamic_cast<RastaManRenderer*>(renderer[1].get())->SetRenderTarget(rt);
 }
 
 void keyboard(unsigned char key, int x, int y) {
@@ -134,8 +137,10 @@ void render() {
       glBlendFunc(GL_ONE, GL_ONE);
       glEnable(GL_BLEND);
     }
-    glDrawPixels(width, height, GL_RGBA, GL_FLOAT,
-      reinterpret_cast<const GLvoid*>(rt->GetBackBuffer()->GetPixels()));
+    glDrawPixels(rt->GetBackBuffer()->GetWidth(),
+                 rt->GetBackBuffer()->GetHeight(), GL_RGBA, GL_FLOAT,
+                 reinterpret_cast<const GLvoid*>(
+                   rt->GetBackBuffer()->GetPixels()));
     glDisable(GL_BLEND);
   }
 
@@ -194,7 +199,7 @@ int main(int argc, char* argv[]) {
                0.0f, 0.0f, 0.0f, 1.0f;
 
   glutInit(&argc, argv);
-  glutInitWindowSize(width, height);
+  glutInitWindowSize(initialWidth, initialHeight);
   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
   glutCreateWindow("RastaMan");
   glutDisplayFunc(render);
