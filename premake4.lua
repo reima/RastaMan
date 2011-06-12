@@ -6,6 +6,11 @@ solution "RastaMan"
     language "C++"
     files { "src/*.hpp", "src/*.cpp" }
     includedirs { "extern/eigen3" }
+    if os.is("windows") then
+      includedirs { "extern/glut/include", "extern/glew/include" }
+      libdirs { "extern/glut/lib", "extern/glew/lib" }
+      links { "glew32" }
+    end
 
     configuration "Debug"
       defines { "DEBUG" }
