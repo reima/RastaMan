@@ -57,18 +57,25 @@ const int initialHeight = 512;
 
 std::vector<Vector3f> vertices;
 std::vector<int> indices;
-Matrix4f modelView;
+
+Matrix4f projectionMatrix;
+Matrix4f modelMatrix;
+Matrix4f viewMatrix;
+Matrix4f modelViewMatrix;
+
+Quaternionf rotation(Quaternionf::Identity());
+float camDistance = 2.f;
+
 boost::shared_ptr<RenderTarget> rt(
   new RenderTarget(initialWidth, initialHeight));
+const int kRendererCount = 2;
+boost::scoped_ptr<IRenderer> renderer[kRendererCount];
 
 enum {
   RM_OPENGL,
   RM_RASTAMAN,
   RM_DIFFERENCE
 } renderMode = RM_OPENGL;
-
-const int kRendererCount = 2;
-boost::scoped_ptr<IRenderer> renderer[kRendererCount];
 
 int frames = 0;
 int fps = -1;
@@ -79,20 +86,58 @@ void resize(int width, int height) {
   }
   rt.reset(new RenderTarget(width, height));
   dynamic_cast<RastaManRenderer*>(renderer[1].get())->SetRenderTarget(rt);
+
+  float fieldOfView = 60.f;
+  float aspect = static_cast<float>(width)/height;
+  float zNear = .1f;
+  float zFar = 100.f;
+
+  float f = 1.f/std::tan(fieldOfView/180.f * 3.14159265f * .5f);
+
+  projectionMatrix <<
+    f/aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (zFar + zNear)/(zNear - zFar), 2*zFar*zNear/(zNear - zFar),
+    0, 0, -1, 0;
 }
 
 void keyboard(unsigned char key, int x, int y) {
-  if (key == 'o') {
-    renderMode = RM_OPENGL;
-    glutPostRedisplay();
-  } else if (key == 'r') {
-    renderMode = RM_RASTAMAN;
-    glutPostRedisplay();
-  } else if (key == 'd') {
-    renderMode = RM_DIFFERENCE;
-    glutPostRedisplay();
-  } else if (key == 27) {
-    glutLeaveMainLoop();
+  switch (key) {
+    case 'o':
+      renderMode = RM_OPENGL;
+      break;
+    case 'r':
+      renderMode = RM_RASTAMAN;
+      break;
+    case 'd':
+      renderMode = RM_DIFFERENCE;
+      break;
+    case '+':
+      camDistance /= 1.05f;
+      break;
+    case '-':
+      camDistance *= 1.05f;
+      break;
+    case 27:
+      glutLeaveMainLoop();
+      break;
+  }
+}
+
+void specialKey(int key, int x, int y) {
+  switch (key) {
+    case GLUT_KEY_LEFT:
+      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitY())) * rotation;
+      break;
+    case GLUT_KEY_RIGHT:
+      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitY())) * rotation;
+      break;
+    case GLUT_KEY_UP:
+      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitX())) * rotation;
+      break;
+    case GLUT_KEY_DOWN:
+      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
+      break;
   }
 }
 
@@ -103,17 +148,18 @@ void timer(int) {
 }
 
 void update() {
-  Matrix4f rotation;
-  rotation << AngleAxisf(.003f, Vector3f::UnitY()).matrix(),
-              Vector3f::Zero(), RowVector4f::UnitW();
-  modelView = rotation * modelView;
+  Affine3f viewTransform;
+  viewTransform = Translation3f(0, 0, -camDistance) * rotation;
+  viewMatrix = viewTransform.matrix();
+  modelViewMatrix = viewMatrix * modelMatrix;
   glutPostRedisplay();
 }
 
 void drawScene(IRenderer* renderer) {
   const float clearColor[4] = { 0, 0, 0, 0 };
   renderer->Clear(clearColor);
-  renderer->SetModelViewMatrix(modelView);
+  renderer->SetProjectionMatrix(projectionMatrix);
+  renderer->SetModelViewMatrix(modelViewMatrix);
   renderer->DrawTriangles(&vertices[0], &indices[0], indices.size());
 }
 
@@ -125,11 +171,14 @@ void render() {
   }
 
   glDisable(GL_DEPTH_TEST);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+
   if (renderMode == RM_RASTAMAN || renderMode == RM_DIFFERENCE) {
     drawScene(renderer[1].get());
 
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
     glRasterPos2f(-1.f, 1.f);
     glPixelZoom(1.f, -1.f);
     if (renderMode == RM_DIFFERENCE) {
@@ -189,14 +238,9 @@ int main(int argc, char* argv[]) {
             << std::endl;
 
   Vector3f extents = max - min;
-  Vector3f mid = (max + min) * 0.5f;
-  std::cout << "Mid: (" << mid.x() << " " << mid.y() << " " << mid.z() << ")" << std::endl;
-  const float scale = 1.9f / (std::max(extents[0], extents[1]));
-  std::cout << "Scale: " << scale << std::endl;
-  modelView << scale, 0.0f, 0.0f, -scale*mid.x(),
-               0.0f, scale, 0.0f, -scale*mid.y(),
-               0.0f, 0.0f, scale, 0.0f,
-               0.0f, 0.0f, 0.0f, 1.0f;
+  const float scale = 1.f / extents.maxCoeff();
+  Vector3f mid = (max + min) * .5f;
+  modelMatrix = (Scaling(scale) * Translation3f(-mid)).matrix();
 
   glutInit(&argc, argv);
   glutInitWindowSize(initialWidth, initialHeight);
@@ -205,6 +249,7 @@ int main(int argc, char* argv[]) {
   glutDisplayFunc(render);
   glutReshapeFunc(resize);
   glutKeyboardFunc(keyboard);
+  glutSpecialFunc(specialKey);
   glutIdleFunc(update);
   glutTimerFunc(1000, timer, 0);
 
