@@ -61,8 +61,8 @@ Vector4f RastaManRenderer::ProcessFragment(const Vector3f& position) {
 
 inline void SetupEdgeEquation(const Vector3f& v1, const Vector3f& v2,
                               float* a, float* b, float* c) {
-  *a = v1.y() - v2.y();
-  *b = v2.x() - v1.x();
+  *a = v2.y() - v1.y();
+  *b = v1.x() - v2.x();
   *c = (*a * (v1.x() + v2.x()) + *b * (v1.y() + v2.y())) * -.5f;
 }
 

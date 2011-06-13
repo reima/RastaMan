@@ -259,7 +259,7 @@ int main(int argc, char* argv[]) {
   glDepthFunc(GL_LESS);
 
   glEnable(GL_CULL_FACE);
-  glFrontFace(GL_CW);
+  glFrontFace(GL_CCW);
 
   glutMainLoop();
 
