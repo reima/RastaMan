@@ -112,12 +112,6 @@ void keyboard(unsigned char key, int x, int y) {
     case 'd':
       renderMode = RM_DIFFERENCE;
       break;
-    case '+':
-      camDistance /= 1.05f;
-      break;
-    case '-':
-      camDistance *= 1.05f;
-      break;
     case 27:
       glutLeaveMainLoop();
       break;
@@ -137,6 +131,12 @@ void specialKey(int key, int x, int y) {
       break;
     case GLUT_KEY_DOWN:
       rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
+      break;
+    case GLUT_KEY_PAGE_UP:
+      camDistance /= 1.05f;
+      break;
+    case GLUT_KEY_PAGE_DOWN:
+      camDistance *= 1.05f;
       break;
   }
 }
