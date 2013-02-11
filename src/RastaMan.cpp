@@ -8,7 +8,7 @@
 #include <iostream>
 
 #include <GL/glew.h>
-#include <GL/freeglut.h>
+#include <GL/glfw.h>
 
 #include <Eigen/Geometry>
 
@@ -77,9 +77,6 @@ enum {
   RM_DIFFERENCE
 } renderMode = RM_OPENGL;
 
-int frames = 0;
-int fps = -1;
-
 void resize(int width, int height) {
   for (int i = 0; i < kRendererCount; ++i) {
     renderer[i]->SetViewport(0, 0, width, height);
@@ -101,7 +98,41 @@ void resize(int width, int height) {
     0, 0, -1, 0;
 }
 
-void keyboard(unsigned char key, int x, int y) {
+void special(int key, int state) {
+  if (state != GLFW_PRESS) {
+    return;
+  }
+
+  switch (key) {
+    case GLFW_KEY_ESC:
+      glfwCloseWindow();
+      break;
+    case GLFW_KEY_LEFT:
+      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitY())) * rotation;
+      break;
+    case GLFW_KEY_RIGHT:
+      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitY())) * rotation;
+      break;
+    case GLFW_KEY_UP:
+      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitX())) * rotation;
+      break;
+    case GLFW_KEY_DOWN:
+      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
+      break;
+    case GLFW_KEY_PAGEUP:
+      camDistance /= 1.05f;
+      break;
+    case GLFW_KEY_PAGEDOWN:
+      camDistance *= 1.05f;
+      break;
+  }
+}
+
+void keyboard(int key, int state) {
+  if (state != GLFW_PRESS) {
+    return;
+  }
+
   switch (key) {
     case 'o':
       renderMode = RM_OPENGL;
@@ -112,39 +143,7 @@ void keyboard(unsigned char key, int x, int y) {
     case 'd':
       renderMode = RM_DIFFERENCE;
       break;
-    case 27:
-      glutLeaveMainLoop();
-      break;
   }
-}
-
-void specialKey(int key, int x, int y) {
-  switch (key) {
-    case GLUT_KEY_LEFT:
-      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitY())) * rotation;
-      break;
-    case GLUT_KEY_RIGHT:
-      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitY())) * rotation;
-      break;
-    case GLUT_KEY_UP:
-      rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitX())) * rotation;
-      break;
-    case GLUT_KEY_DOWN:
-      rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
-      break;
-    case GLUT_KEY_PAGE_UP:
-      camDistance /= 1.05f;
-      break;
-    case GLUT_KEY_PAGE_DOWN:
-      camDistance *= 1.05f;
-      break;
-  }
-}
-
-void timer(int) {
-  fps = frames;
-  frames = 0;
-  glutTimerFunc(1000, timer, 0);
 }
 
 void update() {
@@ -152,7 +151,6 @@ void update() {
   viewTransform = Translation3f(0, 0, -camDistance) * rotation;
   viewMatrix = viewTransform.matrix();
   modelViewMatrix = viewMatrix * modelMatrix;
-  glutPostRedisplay();
 }
 
 void drawScene(IRenderer* renderer) {
@@ -193,21 +191,6 @@ void render() {
     glDisable(GL_BLEND);
   }
 
-  const GLubyte* text;
-  switch (renderMode) {
-    case RM_OPENGL: text = (const GLubyte*)"OpenGL"; break;
-    case RM_RASTAMAN: text = (const GLubyte*)"RastaMan"; break;
-    case RM_DIFFERENCE: text = (const GLubyte*)"Difference"; break;
-  }
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glRasterPos2i(-1, -1);
-  glutBitmapString(GLUT_BITMAP_HELVETICA_10, text);
-
-  char fpsText[100];
-  sprintf(fpsText, " %d FPS", fps);
-  glutBitmapString(GLUT_BITMAP_HELVETICA_10, (const GLubyte*)fpsText);
-
   glEnable(GL_DEPTH_TEST);
 
   //boost::scoped_array<char> data(new char[width*height*3]);
@@ -220,14 +203,13 @@ void render() {
   //for (int y = height - 1; y >= 0; --y) {
   //  ofs.write(&data[width*y*3], width*3);
   //}
-
-  ++frames;
-  glutSwapBuffers();
 }
 
 int main(int argc, char* argv[]) {
-  renderer[0].reset(new OpenGLRenderer());
-  renderer[1].reset(new RastaManRenderer(rt));
+  if (argc < 2) {
+    std::cerr << "Missing argument." << std::endl;
+    return 1;
+  }
 
   Vector3f min, max;
   LoadSimpleObj(argv[1], vertices, indices, min, max);
@@ -242,16 +224,25 @@ int main(int argc, char* argv[]) {
   Vector3f mid = (max + min) * .5f;
   modelMatrix = (Scaling(scale) * Translation3f(-mid)).matrix();
 
-  glutInit(&argc, argv);
-  glutInitWindowSize(initialWidth, initialHeight);
-  glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-  glutCreateWindow("RastaMan");
-  glutDisplayFunc(render);
-  glutReshapeFunc(resize);
-  glutKeyboardFunc(keyboard);
-  glutSpecialFunc(specialKey);
-  glutIdleFunc(update);
-  glutTimerFunc(1000, timer, 0);
+  renderer[0].reset(new OpenGLRenderer());
+  renderer[1].reset(new RastaManRenderer(rt));
+
+  if (!glfwInit()) {
+    std::cerr << "Error initializing GLEW" << std::endl;
+    return 1;
+  }
+
+  if (!glfwOpenWindow(initialWidth, initialHeight, 8, 8, 8, 0, 24, 0, GLFW_WINDOW)) {
+    glfwTerminate();
+    std::cerr << "Error opening window" << std::endl;
+    return 1;
+  }
+
+  glfwSetWindowTitle("RastaMan");
+  glfwSetCharCallback(keyboard);
+  glfwSetKeyCallback(special);
+  glfwSetWindowSizeCallback(resize);
+  glfwEnable(GLFW_KEY_REPEAT);
 
   glewInit();
 
@@ -261,7 +252,17 @@ int main(int argc, char* argv[]) {
   glEnable(GL_CULL_FACE);
   glFrontFace(GL_CCW);
 
-  glutMainLoop();
+  bool running = true;
+
+  while (running) {
+    update();
+    render();
+    glfwSwapBuffers();
+
+    running = glfwGetWindowParam(GLFW_OPENED) != 0;
+  }
+
+  glfwTerminate();
 
   //std::ofstream ofs("image.ppm");
   //ofs << "P6\n";
