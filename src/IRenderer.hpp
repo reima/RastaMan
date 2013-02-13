@@ -10,7 +10,7 @@ class IRenderer {
   virtual void Clear(const float clearColor[4]) = 0;
 
   virtual void SetModelViewMatrix(const Eigen::Matrix4f& m) = 0;
-  virtual void SetProjectionMatrix(const Eigen::Matrix4f& m) = 0;  
+  virtual void SetProjectionMatrix(const Eigen::Matrix4f& m) = 0;
 
   virtual void SetViewport(int x, int y, int width, int height) = 0;
 

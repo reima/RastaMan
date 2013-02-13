@@ -11,7 +11,7 @@ class OpenGLRenderer : public IRenderer {
   void Clear(const float clearColor[4]);
 
   void SetModelViewMatrix(const Eigen::Matrix4f& m);
-  void SetProjectionMatrix(const Eigen::Matrix4f& m);  
+  void SetProjectionMatrix(const Eigen::Matrix4f& m);
 
   void SetViewport(int x, int y, int width, int height);
 
