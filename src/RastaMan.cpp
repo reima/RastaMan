@@ -1,16 +1,15 @@
 #include "OpenGLRenderer.hpp"
 #include "RastaManRenderer.hpp"
 
-#include <boost/scoped_ptr.hpp>
+#include "Eigen/Geometry"
+
+#include "GL/glew.h"
+#include "GL/glfw.h"
 
 #include <cmath>
 #include <fstream>
 #include <iostream>
-
-#include <GL/glew.h>
-#include <GL/glfw.h>
-
-#include <Eigen/Geometry>
+#include <memory>
 
 using namespace Eigen;
 
@@ -66,10 +65,10 @@ Matrix4f modelViewMatrix;
 Quaternionf rotation(Quaternionf::Identity());
 float camDistance = 2.f;
 
-boost::shared_ptr<RenderTarget> rt(
+std::shared_ptr<RenderTarget> rt(
   new RenderTarget(initialWidth, initialHeight));
 const int kRendererCount = 2;
-boost::scoped_ptr<IRenderer> renderer[kRendererCount];
+std::unique_ptr<IRenderer> renderers[kRendererCount];
 
 enum {
   RM_OPENGL,
@@ -78,11 +77,11 @@ enum {
 } renderMode = RM_OPENGL;
 
 void resize(int width, int height) {
-  for (int i = 0; i < kRendererCount; ++i) {
-    renderer[i]->SetViewport(0, 0, width, height);
+  for (auto& renderer : renderers) {
+    renderer->SetViewport(0, 0, width, height);
   }
   rt.reset(new RenderTarget(width, height));
-  dynamic_cast<RastaManRenderer*>(renderer[1].get())->SetRenderTarget(rt);
+  dynamic_cast<RastaManRenderer*>(renderers[1].get())->SetRenderTarget(rt);
 
   float fieldOfView = 60.f;
   float aspect = static_cast<float>(width)/height;
@@ -165,7 +164,7 @@ void render() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (renderMode == RM_OPENGL || renderMode == RM_DIFFERENCE) {
-    drawScene(renderer[0].get());
+    drawScene(renderers[0].get());
   }
 
   glDisable(GL_DEPTH_TEST);
@@ -175,7 +174,7 @@ void render() {
   glLoadIdentity();
 
   if (renderMode == RM_RASTAMAN || renderMode == RM_DIFFERENCE) {
-    drawScene(renderer[1].get());
+    drawScene(renderers[1].get());
 
     glRasterPos2f(-1.f, 1.f);
     glPixelZoom(1.f, -1.f);
@@ -224,8 +223,8 @@ int main(int argc, char* argv[]) {
   Vector3f mid = (max + min) * .5f;
   modelMatrix = (Scaling(scale) * Translation3f(-mid)).matrix();
 
-  renderer[0].reset(new OpenGLRenderer());
-  renderer[1].reset(new RastaManRenderer(rt));
+  renderers[0].reset(new OpenGLRenderer());
+  renderers[1].reset(new RastaManRenderer(rt));
 
   if (!glfwInit()) {
     std::cerr << "Error initializing GLEW" << std::endl;
@@ -245,6 +244,11 @@ int main(int argc, char* argv[]) {
   glfwEnable(GLFW_KEY_REPEAT);
 
   glewInit();
+
+  GLint subpixelBits = 0;
+  glGetIntegerv(GL_SUBPIXEL_BITS, &subpixelBits);
+
+  std::cerr << subpixelBits << std::endl;
 
   glEnable(GL_DEPTH_TEST);
   glDepthFunc(GL_LESS);

@@ -3,7 +3,7 @@
 
 using namespace Eigen;
 
-RastaManRenderer::RastaManRenderer(boost::shared_ptr<RenderTarget> rt)
+RastaManRenderer::RastaManRenderer(std::shared_ptr<RenderTarget> rt)
   : modelViewMatrix_(Matrix4f::Identity()),
     projectionMatrix_(Matrix4f::Identity()),
     modelViewProjectionMatrix_(Matrix4f::Identity()),
@@ -28,7 +28,7 @@ void RastaManRenderer::SetProjectionMatrix(const Matrix4f& matrix) {
   modelViewProjectionMatrix_ = projectionMatrix_ * modelViewMatrix_;
 }
 
-void RastaManRenderer::SetRenderTarget(boost::shared_ptr<RenderTarget> rt) {
+void RastaManRenderer::SetRenderTarget(std::shared_ptr<RenderTarget> rt) {
   renderTarget_ = rt;
 }
 
@@ -66,10 +66,11 @@ inline void SetupEdgeEquation(const Vector3f& v1, const Vector3f& v2,
   *c = (*a * (v1.x() + v2.x()) + *b * (v1.y() + v2.y())) * -.5f;
 }
 
-void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
-                                         const Vector3f& v1,
-                                         const Vector3f& v2,
-                                         std::vector<Vector3f>& fragments) {
+void RastaManRenderer::RasterizeTriangle(
+    const Vector3f& v0,
+    const Vector3f& v1,
+    const Vector3f& v2,
+    std::function<void(const Vector3f&)> callback) {
   // Bounding box
   AlignedBox<int, 2> box(v0.head<2>().cast<int>());
   box.extend(v1.head<2>().cast<int>())
@@ -85,11 +86,11 @@ void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
   SetupEdgeEquation(v2, v0, &a[2], &b[2], &c[2]);
 
   // Cull back faces
-  const float doubleArea = c[0] + c[1] + c[2];
+  const auto doubleArea = c[0] + c[1] + c[2];
   if (doubleArea <= 0) return;
 
   // Interpolation equation setup
-  const float doubleAreaInv = 1.f/doubleArea;
+  const auto doubleAreaInv = 1.f/doubleArea;
   a[3] = (v0.z()*a[1] + v1.z()*a[2] + v2.z()*a[0])*doubleAreaInv;
   b[3] = (v0.z()*b[1] + v1.z()*b[2] + v2.z()*b[0])*doubleAreaInv;
   c[3] = (v0.z()*c[1] + v1.z()*c[2] + v2.z()*c[0])*doubleAreaInv;
@@ -97,12 +98,12 @@ void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
   // Encode half pixel offsets in c
   c.head<3>() += (a.head<3>() + b.head<3>()) * .5f;
 
-  for (int y = box.min().y(); y <= box.max().y(); ++y) {
-    for (int x = box.min().x(); x <= box.max().x(); ++x) {
-      Vector4f e = a*x + b*y + c;
+  for (auto y = box.min().y(); y <= box.max().y(); ++y) {
+    for (auto x = box.min().x(); x <= box.max().x(); ++x) {
+      const Vector4f e = a*static_cast<float>(x) + b*static_cast<float>(y) + c;
       if (e[0] > 0 && e[1] > 0 && e[2] > 0) {
-        float z = e[3];
-        fragments.push_back(Vector3f(x, y, z));
+        const auto z = e[3];
+        callback(Vector3f(static_cast<float>(x), static_cast<float>(y), z));
       }
     }
   }
@@ -111,14 +112,14 @@ void RastaManRenderer::RasterizeTriangle(const Vector3f& v0,
 void RastaManRenderer::DrawTriangle(const Vector4f& v0,
                                     const Vector4f& v1,
                                     const Vector4f& v2) {
-  Vector3f normal =
+  auto normal =
     (v1 - v0).head<3>().cross((v2 - v0).head<3>()).normalized();
   normal = normal*.5f + Vector3f::Constant(.5f);
   
   /*
    * Projection
    */
-  Vector4f clip[3] = {
+  const Vector4f clip[3] = {
     ProcessVertex(v0),
     ProcessVertex(v1),
     ProcessVertex(v2)
@@ -131,7 +132,7 @@ void RastaManRenderer::DrawTriangle(const Vector4f& v0,
   /*
    * Dehomogenization
    */
-  Vector4f ndc[3] = {
+  const Vector4f ndc[3] = {
     clip[0] / clip[0].w(),
     clip[1] / clip[1].w(),
     clip[2] / clip[2].w()
@@ -148,19 +149,17 @@ void RastaManRenderer::DrawTriangle(const Vector4f& v0,
   /*
    * Rasterization
    */
-  static std::vector<Vector3f> fragments(1024);
-  fragments.clear();
-  RasterizeTriangle(c[0], c[1], c[2], fragments);
+  RasterizeTriangle(c[0], c[1], c[2], [&] (const Vector3f& fragment) {
+    float& zBuffer = (*renderTarget_->GetZBuffer())(
+      static_cast<int>(fragment.x()), static_cast<int>(fragment.y()));
 
-  for (std::vector<Vector3f>::iterator it = fragments.begin();
-       it != fragments.end(); ++it) {
-    float& zBuffer = (*renderTarget_->GetZBuffer())(it->x(), it->y());
-
-    if (it->z() < zBuffer && 0 <= it->z() && it->z() <= 1) {
-      Vector4f color = ProcessFragment(*it);
-      (*renderTarget_->GetBackBuffer())(it->x(), it->y()) =// color;
-        (Vector4f() << normal, 1.f).finished();
-      zBuffer = it->z();
+    if (fragment.z() < zBuffer && 0 <= fragment.z() && fragment.z() <= 1) {
+      const Vector4f color = ProcessFragment(fragment);
+      (*renderTarget_->GetBackBuffer())(
+        static_cast<int>(fragment.x()), static_cast<int>(fragment.y())) =
+          // color;
+          (Vector4f() << normal, 1.f).finished();
+      zBuffer = fragment.z();
     }
-  }
+  });
 }

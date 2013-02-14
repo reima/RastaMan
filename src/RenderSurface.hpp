@@ -1,9 +1,10 @@
 #ifndef RENDERSURFACE_HPP
 #define RENDERSURFACE_HPP
 
-#include <boost/noncopyable.hpp>
-#include <boost/scoped_array.hpp>
-#include <Eigen/Core>
+#include "Eigen/Core"
+
+#include "boost/noncopyable.hpp"
+#include "boost/scoped_array.hpp"
 
 template<typename Component>
 class RenderSurface : public boost::noncopyable {

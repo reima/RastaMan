@@ -2,8 +2,8 @@
 
 #include <cassert>
 
-RenderTarget::RenderTarget(boost::shared_ptr<RenderSurface4f> backBuffer,
-                           boost::shared_ptr<RenderSurface1f> zBuffer)
+RenderTarget::RenderTarget(std::shared_ptr<RenderSurface4f> backBuffer,
+                           std::shared_ptr<RenderSurface1f> zBuffer)
     : backBuffer_(backBuffer), zBuffer_(zBuffer) {
   assert(backBuffer_->GetWidth() == zBuffer_->GetWidth());
   assert(backBuffer_->GetHeight() == zBuffer_->GetHeight());
@@ -17,10 +17,10 @@ RenderTarget::RenderTarget(int width, int height)
 RenderTarget::~RenderTarget() {
 }
 
-boost::shared_ptr<RenderSurface4f> RenderTarget::GetBackBuffer() {
+std::shared_ptr<RenderSurface4f> RenderTarget::GetBackBuffer() {
   return backBuffer_;
 }
 
-boost::shared_ptr<RenderSurface1f> RenderTarget::GetZBuffer() {
+std::shared_ptr<RenderSurface1f> RenderTarget::GetZBuffer() {
   return zBuffer_;
 }

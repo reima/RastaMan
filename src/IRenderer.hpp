@@ -1,7 +1,7 @@
 #ifndef IRENDERER_HPP
 #define IRENDERER_HPP
 
-#include <Eigen/Core>
+#include "Eigen/Core"
 
 class IRenderer {
  public:

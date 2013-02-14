@@ -1,19 +1,20 @@
 #ifndef RASTAMANRENDERER_HPP
 #define RASTAMANRENDERER_HPP
 
-#include <boost/noncopyable.hpp>
-#include <boost/shared_ptr.hpp>
-#include <vector>
-
-#include <Eigen/Core>
-#include <Eigen/Geometry>
-
 #include "IRenderer.hpp"
 #include "RenderTarget.hpp"
 
+#include "Eigen/Core"
+#include "Eigen/Geometry"
+
+#include "boost/noncopyable.hpp"
+
+#include <memory>
+#include <vector>
+
 class RastaManRenderer : public boost::noncopyable, public IRenderer {
  public:
-  RastaManRenderer(boost::shared_ptr<RenderTarget> rt);
+  RastaManRenderer(std::shared_ptr<RenderTarget> rt);
   ~RastaManRenderer();
 
   void Clear(const float clearColor[4]);
@@ -23,7 +24,7 @@ class RastaManRenderer : public boost::noncopyable, public IRenderer {
 
   void SetViewport(int x, int y, int width, int height);
 
-  void SetRenderTarget(boost::shared_ptr<RenderTarget> rt);
+  void SetRenderTarget(std::shared_ptr<RenderTarget> rt);
 
   void DrawTriangles(const Eigen::Vector3f* vertices,
                      const int* indices,
@@ -39,7 +40,7 @@ class RastaManRenderer : public boost::noncopyable, public IRenderer {
   void RasterizeTriangle(const Eigen::Vector3f& v0,
                          const Eigen::Vector3f& v1,
                          const Eigen::Vector3f& v2,
-                         std::vector<Eigen::Vector3f>& fragments);
+                         std::function<void(const Eigen::Vector3f&)> callback);
 
  private:
   Eigen::Matrix4f modelViewMatrix_;
@@ -50,7 +51,7 @@ class RastaManRenderer : public boost::noncopyable, public IRenderer {
   Eigen::Vector3f viewportScale_;
   Eigen::Vector3f viewportBias_;
 
-  boost::shared_ptr<RenderTarget> renderTarget_;
+  std::shared_ptr<RenderTarget> renderTarget_;
 };
 
 #endif
