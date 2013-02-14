@@ -1,11 +1,13 @@
 #include "OpenGLRenderer.hpp"
 #include "RastaManRenderer.hpp"
+#include "Font.hpp"
 
 #include "Eigen/Geometry"
 
 #include "GL/glew.h"
 #include "GL/glfw.h"
 
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -69,6 +71,9 @@ std::shared_ptr<RenderTarget> rt(
   new RenderTarget(initialWidth, initialHeight));
 const int kRendererCount = 2;
 std::unique_ptr<IRenderer> renderers[kRendererCount];
+
+std::chrono::high_resolution_clock::time_point lastFrameTime;
+std::unique_ptr<Font> font;
 
 enum {
   RM_OPENGL,
@@ -188,7 +193,25 @@ void render() {
                  reinterpret_cast<const GLvoid*>(
                    rt->GetBackBuffer()->GetPixels()));
     glDisable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
   }
+
+  const auto now = std::chrono::high_resolution_clock::now();
+  const auto elapsedMillis =
+    std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime)
+    .count();
+  lastFrameTime = now;
+
+  std::stringstream ss;
+  switch (renderMode) {
+    case RM_OPENGL: ss << "OpenGL"; break;
+    case RM_RASTAMAN: ss << "RastaMan"; break;
+    case RM_DIFFERENCE: ss << "Diff"; break;
+  }
+  ss << " " << elapsedMillis << "ms";
+
+  glColor3f(1.0f, 1.0f, 1.0f);
+  font->Draw(ss.str().c_str(), 0, 0);
 
   glEnable(GL_DEPTH_TEST);
 
@@ -242,12 +265,14 @@ int main(int argc, char* argv[]) {
   glfwSetKeyCallback(special);
   glfwSetWindowSizeCallback(resize);
   glfwEnable(GLFW_KEY_REPEAT);
+  glfwSwapInterval(0);
 
   glewInit();
 
+  font.reset(new Font);
+
   GLint subpixelBits = 0;
   glGetIntegerv(GL_SUBPIXEL_BITS, &subpixelBits);
-
   std::cerr << subpixelBits << std::endl;
 
   glEnable(GL_DEPTH_TEST);

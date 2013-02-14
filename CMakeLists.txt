@@ -10,6 +10,8 @@ FIND_PACKAGE(GLFW REQUIRED)
 
 SET(RastaMan_SOURCE
   src/FixedPoint.hpp
+  src/Font.cpp
+  src/Font.hpp
   src/IRenderer.hpp
   src/OpenGLRenderer.cpp
   src/OpenGLRenderer.hpp
