@@ -37,17 +37,19 @@ void LoadSimpleObj(const char* filename,
       }
       vertices.push_back(vec);
     } else if (keyword == "f") {
-      int idx[4];
+      int idx[3];
       for (int i = 0; i < 3; ++i) {
         ss >> idx[i];
-        indices.push_back(idx[i] - 1);
         ss.ignore(1000, ' ');
+        indices.push_back(idx[i] - 1);
       }
-      if (ss >> idx[3]) {
-        // Split quad
+      idx[1] = idx[2];
+      while (ss >> idx[2]) {
+        ss.ignore(1000, ' ');
         indices.push_back(idx[0] - 1);
+        indices.push_back(idx[1] - 1);
         indices.push_back(idx[2] - 1);
-        indices.push_back(idx[3] - 1);
+        idx[1] = idx[2];
       }
     }
   }
