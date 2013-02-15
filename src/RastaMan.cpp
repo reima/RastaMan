@@ -186,16 +186,14 @@ void render() {
     glRasterPos2f(-1.f, 1.f);
     glPixelZoom(1.f, -1.f);
     if (renderMode == RM_DIFFERENCE) {
-      glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-      glBlendFunc(GL_ONE, GL_ONE);
-      glEnable(GL_BLEND);
+      glLogicOp(GL_XOR);
+      glEnable(GL_COLOR_LOGIC_OP);
     }
     glDrawPixels(rt->GetBackBuffer()->GetWidth(),
                  rt->GetBackBuffer()->GetHeight(), GL_RGBA, GL_FLOAT,
                  reinterpret_cast<const GLvoid*>(
                    rt->GetBackBuffer()->GetPixels()));
-    glDisable(GL_BLEND);
-    glBlendEquation(GL_FUNC_ADD);
+    glDisable(GL_COLOR_LOGIC_OP);
   }
 
   const auto now = std::chrono::high_resolution_clock::now();
