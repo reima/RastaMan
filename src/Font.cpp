@@ -991,6 +991,14 @@ Font::~Font() {
   glDeleteTextures(1, &texture_);
 }
 
+int Font::GetLineHeight() const {
+  return kCharHeight;
+}
+
+int Font::GetCharWidth() const {
+  return kCharWidth;
+}
+
 void Font::Draw(const char* str, int x, int y) {
   glEnable(GL_TEXTURE_2D);
   glBindTexture(GL_TEXTURE_2D, texture_);

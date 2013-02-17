@@ -55,8 +55,8 @@ void LoadSimpleObj(const char* filename,
   }
 }
 
-const int initialWidth = 512;
-const int initialHeight = 512;
+int width = 512;
+int height = 512;
 
 std::vector<Vector3f> vertices;
 std::vector<int> indices;
@@ -69,8 +69,7 @@ Matrix4f modelViewMatrix;
 Quaternionf rotation(Quaternionf::Identity());
 float camDistance = 2.f;
 
-std::shared_ptr<RenderTarget> rt(
-  new RenderTarget(initialWidth, initialHeight));
+std::shared_ptr<RenderTarget> rt;
 const int kRendererCount = 2;
 std::unique_ptr<IRenderer> renderers[kRendererCount];
 
@@ -84,6 +83,8 @@ enum {
 } renderMode = RM_OPENGL;
 
 void resize(int width, int height) {
+  ::width = width;
+  ::height = height;
   for (auto& renderer : renderers) {
     renderer->SetViewport(0, 0, width, height);
   }
@@ -167,6 +168,47 @@ void drawScene(IRenderer* renderer) {
   renderer->DrawTriangles(&vertices[0], &indices[0], indices.size());
 }
 
+void drawOverlay() {
+  const auto now = std::chrono::high_resolution_clock::now();
+  const auto elapsedMillis =
+    std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime)
+    .count();
+  lastFrameTime = now;
+
+  std::stringstream ss;
+  switch (renderMode) {
+    case RM_OPENGL: ss << "OpenGL"; break;
+    case RM_RASTAMAN: ss << "RastaMan"; break;
+    case RM_DIFFERENCE: ss << "Diff"; break;
+  }
+  ss << " " << elapsedMillis << "ms";
+
+  glDisable(GL_DEPTH_TEST);
+  glColor3f(1.0f, 1.0f, 1.0f);
+  int y = height;
+  font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
+
+  Vector2i mouse;
+  glfwGetMousePos(&mouse.x(), &mouse.y());
+  if (mouse.x() < 0 || mouse.x() >= width || mouse.y() < 0 || mouse.y() >= height) {
+    return;
+  }
+
+  ss.str("");
+  ss << "Position: (" << mouse << ")";
+  font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
+  
+  const auto color = (*rt->GetBackBuffer())(mouse.x(), mouse.y());
+  ss.str("");
+  ss << "Color: (" << color << ")";
+  font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
+
+  const auto z = (*rt->GetZBuffer())(mouse.x(), mouse.y());
+  ss.str("");
+  ss << "Depth: " << z;
+  font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
+}
+
 void render() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -196,25 +238,8 @@ void render() {
     glDisable(GL_COLOR_LOGIC_OP);
   }
 
-  const auto now = std::chrono::high_resolution_clock::now();
-  const auto elapsedMillis =
-    std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime)
-    .count();
-  lastFrameTime = now;
-
-  std::stringstream ss;
-  switch (renderMode) {
-    case RM_OPENGL: ss << "OpenGL"; break;
-    case RM_RASTAMAN: ss << "RastaMan"; break;
-    case RM_DIFFERENCE: ss << "Diff"; break;
-  }
-  ss << " " << elapsedMillis << "ms";
-
-  glColor3f(1.0f, 1.0f, 1.0f);
-  font->Draw(ss.str().c_str(), 0, 0);
-
-  glEnable(GL_DEPTH_TEST);
-
+  drawOverlay();
+  
   //boost::scoped_array<char> data(new char[width*height*3]);
   //glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data.get());
 
@@ -247,6 +272,8 @@ int main(int argc, char* argv[]) {
   modelMatrix = (Scaling(scale) * Translation3f(-mid)).matrix();
 
   renderers[0].reset(new OpenGLRenderer());
+
+  rt.reset(new RenderTarget(width, height));
   renderers[1].reset(new RastaManRenderer(rt));
 
   if (!glfwInit()) {
@@ -254,7 +281,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  if (!glfwOpenWindow(initialWidth, initialHeight, 8, 8, 8, 0, 24, 0, GLFW_WINDOW)) {
+  if (!glfwOpenWindow(width, height, 8, 8, 8, 0, 24, 0, GLFW_WINDOW)) {
     glfwTerminate();
     std::cerr << "Error opening window" << std::endl;
     return 1;
