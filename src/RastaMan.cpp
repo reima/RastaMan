@@ -67,7 +67,7 @@ Matrix4f viewMatrix;
 Matrix4f modelViewMatrix;
 
 Quaternionf rotation(Quaternionf::Identity());
-float camDistance = 2.f;
+Vector3f translation(0.0f, 0.0f, -2.0f);
 
 std::shared_ptr<RenderTarget> rt;
 const int kRendererCount = 2;
@@ -82,6 +82,25 @@ enum {
   RM_DIFFERENCE
 } renderMode = RM_OPENGL;
 
+Matrix4f getPerspectiveMatrix(float fieldOfView, float aspect, float zNear,
+                              float zFar) {
+  const float f = 1.f/std::tan(fieldOfView/180.f * 3.14159265f * .5f);
+  return (Matrix4f() <<
+    f/aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (zFar + zNear)/(zNear - zFar), 2*zFar*zNear/(zNear - zFar),
+    0, 0, -1, 0).finished();
+}
+
+Matrix4f getOrthographicMatrix(float left, float right, float bottom, float top,
+                               float zNear, float zFar) {
+  return (Matrix4f() <<
+    2.0f/(right-left), 0, 0, -(right+left) / (right-left),
+    0, 2.0f/(top-bottom), 0, -(top+bottom) / (top-bottom),
+    0, 0, -2.0f/(zFar-zNear), -(zFar+zNear) / (zFar-zNear),
+    0, 0, 0, 1).finished();
+}
+
 void resize(int width, int height) {
   ::width = width;
   ::height = height;
@@ -91,18 +110,10 @@ void resize(int width, int height) {
   rt.reset(new RenderTarget(width, height));
   dynamic_cast<RastaManRenderer*>(renderers[1].get())->SetRenderTarget(rt);
 
-  float fieldOfView = 60.f;
-  float aspect = static_cast<float>(width)/height;
-  float zNear = .1f;
-  float zFar = 100.f;
-
-  float f = 1.f/std::tan(fieldOfView/180.f * 3.14159265f * .5f);
-
-  projectionMatrix <<
-    f/aspect, 0, 0, 0,
-    0, f, 0, 0,
-    0, 0, (zFar + zNear)/(zNear - zFar), 2*zFar*zNear/(zNear - zFar),
-    0, 0, -1, 0;
+  const auto aspect = static_cast<float>(width)/height;
+  projectionMatrix = getPerspectiveMatrix(60.0f, aspect, 0.1f, 100.0f);
+  //projectionMatrix =
+  //  getOrthographicMatrix(-aspect, aspect, -1.0f, 1.0f, 0.0f, 10.0f);
 }
 
 void special(int key, int state) {
@@ -127,10 +138,10 @@ void special(int key, int state) {
       rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
       break;
     case GLFW_KEY_PAGEUP:
-      camDistance /= 1.05f;
+      translation.z() /= 1.05f;
       break;
     case GLFW_KEY_PAGEDOWN:
-      camDistance *= 1.05f;
+      translation.z() *= 1.05f;
       break;
   }
 }
@@ -147,15 +158,27 @@ void keyboard(int key, int state) {
     case 'r':
       renderMode = RM_RASTAMAN;
       break;
-    case 'd':
+    case 'x':
       renderMode = RM_DIFFERENCE;
+      break;
+    case 'w':
+      translation.y() += 0.0625f;
+      break;
+    case 's':
+      translation.y() -= 0.0625f;
+      break;
+    case 'a':
+      translation.x() -= 0.0625f;
+      break;
+    case 'd':
+      translation.x() += 0.0625f;
       break;
   }
 }
 
 void update() {
   Affine3f viewTransform;
-  viewTransform = Translation3f(0, 0, -camDistance) * rotation;
+  viewTransform = Translation3f(translation) * rotation;
   viewMatrix = viewTransform.matrix();
   modelViewMatrix = viewMatrix * modelMatrix;
 }
