@@ -30,6 +30,7 @@ class FixedPoint
   >::type PromoteType;
 
   static const BaseType kOne = (1 << FracBits);
+  static const BaseType kHalf = (kOne >> 1);
 
  public:
   typedef FixedPoint<BaseType, FracBits, IntBits> type;
@@ -43,6 +44,10 @@ class FixedPoint
   template<typename T>
   FixedPoint(T value) {
     Set<T>(value);
+  }
+
+  FixedPoint(const type& other) {
+    value_ = other.value_;
   }
 
  public:
@@ -60,14 +65,19 @@ class FixedPoint
 
   template<typename Float>
   typename boost::enable_if<boost::is_floating_point<Float>, Float>::type
-  GetAs() {
+  GetAs() const {
     return static_cast<Float>(value_) / kOne;
   }
 
   template<typename Int>
   typename boost::enable_if<boost::is_integral<Int>, Int>::type
-  GetAs() {
+  GetAs() const {
     return value_ / kOne;
+  }
+
+  template<typename T>
+  operator T() const {
+    return GetAs<T>();
   }
 
   bool operator<(const type& other) const {
@@ -94,12 +104,20 @@ class FixedPoint
   }
 
   type& operator*=(const type& other) {
-    value_ = (static_cast<PromoteType>(value_) * other.value_) >> FracBits;
+    auto temp = static_cast<PromoteType>(value_) * other.value_;
+    // Add 0.5 for proper rounding (half-up)
+    temp += kHalf;
+    // Result is in 2*FracBits, shift away excess fractional bits
+    value_ = static_cast<BaseType>(temp >> FracBits);
     return *this;
   }
 
   type& operator/=(const type& other) {
-    value_ = (static_cast<PromoteType>(value_) << FracBits) / other.value_;
+    // Upscale to 2*FracBits
+    auto temp = static_cast<PromoteType>(value_) << FracBits;
+    // Add half the divisor for proper rounding (half-up)
+    temp += other.value_ / 2;
+    value_ = static_cast<BaseType>(temp / other.value_);
     return *this;
   }
 
