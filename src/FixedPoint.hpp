@@ -11,17 +11,13 @@
 #include <cstdint>
 #include <limits>
 
-template<
-  typename BaseType,
-  std::size_t FracBits,
-  std::size_t IntBits = std::numeric_limits<BaseType>::digits - FracBits
->
+template<typename BaseType, std::size_t FracBits>
 class FixedPoint
-    : boost::ordered_field_operators<FixedPoint<BaseType, FracBits, IntBits>
-    , boost::unit_steppable<FixedPoint<BaseType, FracBits, IntBits> > > {
+    : boost::ordered_field_operators<FixedPoint<BaseType, FracBits>
+    , boost::unit_steppable<FixedPoint<BaseType, FracBits>>> {
  private:
   BOOST_STATIC_ASSERT(std::numeric_limits<BaseType>::is_integer);
-  BOOST_STATIC_ASSERT(FracBits + IntBits == std::numeric_limits<BaseType>::digits);
+  BOOST_STATIC_ASSERT(FracBits < std::numeric_limits<BaseType>::digits);
 
   typedef typename boost::mpl::if_c<
     std::numeric_limits<BaseType>::is_signed,
@@ -33,10 +29,11 @@ class FixedPoint
   static const BaseType kHalf = (kOne >> 1);
 
  public:
-  typedef FixedPoint<BaseType, FracBits, IntBits> type;
+  typedef FixedPoint<BaseType, FracBits> type;
   typedef BaseType base_type;
   static const std::size_t frac_bits = FracBits;
-  static const std::size_t int_bits = IntBits;
+  static const std::size_t int_bits =
+    std::numeric_limits<BaseType>::digits - frac_bits;
 
   FixedPoint() {
   }
@@ -149,10 +146,10 @@ class FixedPoint
 };
 
 namespace std {
-template<typename B, std::size_t F, std::size_t I>
-class numeric_limits<FixedPoint<B, F, I> > {
+template<typename B, std::size_t F>
+class numeric_limits<FixedPoint<B, F>> {
  public:
-  typedef FixedPoint<B, F, I> T;
+  typedef FixedPoint<B, F> T;
   static const bool is_specialized = true;
   static T min() throw() {
     return T(numeric_limits<B>::min(), 0);
@@ -160,8 +157,8 @@ class numeric_limits<FixedPoint<B, F, I> > {
   static T max() throw() {
     return T(numeric_limits<B>::max(), 0);
   }
-  static const int digits = I;
-  static const int digits10 = static_cast<int>(I * /* log10(2) */ .30103 + .5);
+  static const int digits = T::int_bits;
+  static const int digits10 = static_cast<int>(digits * /* log10(2) */ .30103 + .5);
   static const bool is_signed = numeric_limits<B>::is_signed;
   static const bool is_integer = false;
   static const bool is_exact = true;
