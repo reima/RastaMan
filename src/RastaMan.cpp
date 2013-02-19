@@ -236,6 +236,7 @@ void render() {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (renderMode == RM_OPENGL || renderMode == RM_DIFFERENCE) {
+    glEnable(GL_DEPTH_TEST);
     drawScene(renderers[0].get());
   }
 

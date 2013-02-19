@@ -1,7 +1,32 @@
 #include "RastaManRenderer.hpp"
+
+#include "FixedPoint.hpp"
 #include "RenderSurface.hpp"
 
 using namespace Eigen;
+
+namespace {
+typedef FixedPoint<int32_t, 8> FP;
+typedef Matrix<FP, 2, 1> Vector2FP;
+typedef Matrix<FP, 3, 1> Vector3FP;
+
+template<typename T>
+inline T Orient2D(const Array<T, 2, 1>& a, const Array<T, 2, 1>& b,
+                  const Array<T, 2, 1>& c) {
+  // Make sure computations have exactly the same order of operations for both
+  // triangles of a shared edge.  This guarantees the same rounding behavior for
+  // a consistent fill rule.
+  if (a.x() < b.x() || (a.x() == b.x() && a.x() < b.x())) {
+    return (a.x() - b.x())*(c.y() - a.y()) - (a.y() - b.y())*(c.x() - a.x());
+  } else {
+    return -((b.x() - a.x())*(c.y() - b.y()) - (b.y() - a.y())*(c.x() - b.x()));
+  }
+}
+
+inline bool IsTopLeft(const Vector2FP& a, const Vector2FP& b) {
+  return (a.y() == b.y() && a.x() > b.x()) || (a.y() < b.y());
+}
+}
 
 RastaManRenderer::RastaManRenderer(std::shared_ptr<RenderTarget> rt)
   : modelViewMatrix_(Matrix4f::Identity()),
@@ -59,53 +84,80 @@ Vector4f RastaManRenderer::ProcessFragment(const Vector3f& position) {
   return Vector4f(1, 1, 1, 1);
 }
 
-inline void SetupEdgeEquation(const Vector3f& v1, const Vector3f& v2,
-                              float* a, float* b, float* c) {
-  *a = v2.y() - v1.y();
-  *b = v1.x() - v2.x();
-  *c = (*a * (v1.x() + v2.x()) + *b * (v1.y() + v2.y())) * -.5f;
-}
-
 void RastaManRenderer::RasterizeTriangle(
     const Vector3f& v0,
     const Vector3f& v1,
     const Vector3f& v2,
     std::function<void(const Vector3f&)> callback) {
+  // Double triangle area for interpolation and backface culling
+  const auto doubleArea = Orient2D<float>(v0.head<2>(), v1.head<2>(),
+                                          v2.head<2>());
+
+  // Backface culling
+  if (doubleArea <= 0.0f) {
+    return;
+  }
+
+  // Precomputation for z interpolation formula:
+  // z = v0.z + w1/doubleArea*(v1.z-v0.z) + w2/doubleArea*(v2.z-v0.z)
+  const float zz[3] = {
+    v0.z(),
+    (v1.z() - v0.z()) / doubleArea,
+    (v2.z() - v0.z()) / doubleArea,
+  };
+
+  // Convert to fixed point
+  const Vector2FP iv0 = (v0.head<2>() - Vector2f(0.5f, 0.5f)).cast<FP>();
+  const Vector2FP iv1 = (v1.head<2>() - Vector2f(0.5f, 0.5f)).cast<FP>();
+  const Vector2FP iv2 = (v2.head<2>() - Vector2f(0.5f, 0.5f)).cast<FP>();
+
   // Bounding box
-  AlignedBox<int, 2> box(v0.head<2>().cast<int>());
-  box.extend(v1.head<2>().cast<int>())
-     .extend(v2.head<2>().cast<int>());
-
+  AlignedBox<int, 2> box;
+  box.extend(Vector2i(iv0.x(), iv0.y()));
+  box.extend(Vector2i(iv1.x(), iv1.y()));
+  box.extend(Vector2i(iv2.x(), iv2.y()));
   box = box.intersection(viewport_);
-  if (box.isEmpty()) return;
 
-  // Edge equations setup
-  Array4f a, b, c;
-  SetupEdgeEquation(v0, v1, &a[0], &b[0], &c[0]);
-  SetupEdgeEquation(v1, v2, &a[1], &b[1], &c[1]);
-  SetupEdgeEquation(v2, v0, &a[2], &b[2], &c[2]);
+  if (box.isEmpty()) {
+    return;
+  }
 
-  // Cull back faces
-  const auto doubleArea = c[0] + c[1] + c[2];
-  if (doubleArea <= 0) return;
+  // Bias for fill rule
+  static const FP eps = std::numeric_limits<FP>::epsilon();
+  const Vector3FP bias(
+    IsTopLeft(iv1, iv2) ? 0 : eps,
+    IsTopLeft(iv2, iv0) ? 0 : eps,
+    IsTopLeft(iv0, iv1) ? 0 : eps);
 
-  // Interpolation equation setup
-  const auto doubleAreaInv = 1.f/doubleArea;
-  a[3] = (v0.z()*a[1] + v1.z()*a[2] + v2.z()*a[0])*doubleAreaInv;
-  b[3] = (v0.z()*b[1] + v1.z()*b[2] + v2.z()*b[0])*doubleAreaInv;
-  c[3] = (v0.z()*c[1] + v1.z()*c[2] + v2.z()*c[0])*doubleAreaInv;
+  // Increments
+  const Vector3FP pixelInc(
+    iv2.y() - iv1.y(),
+    iv0.y() - iv2.y(),
+    iv1.y() - iv0.y());
+  const Vector3FP rowInc(
+    iv1.x() - iv2.x(),
+    iv2.x() - iv0.x(),
+    iv0.x() - iv1.x());
 
-  // Encode half pixel offsets in c
-  c.head<3>() += (a.head<3>() + b.head<3>()) * .5f;
+  // Base values
+  Vector2i p(box.min());
+  Vector3FP row(
+    Orient2D<FP>(iv1, iv2, p.cast<FP>()),
+    Orient2D<FP>(iv2, iv0, p.cast<FP>()),
+    Orient2D<FP>(iv0, iv1, p.cast<FP>()));
 
-  for (auto y = box.min().y(); y <= box.max().y(); ++y) {
-    for (auto x = box.min().x(); x <= box.max().x(); ++x) {
-      const Vector4f e = a*static_cast<float>(x) + b*static_cast<float>(y) + c;
-      if (e[0] > 0 && e[1] > 0 && e[2] > 0) {
-        const auto z = e[3];
-        callback(Vector3f(static_cast<float>(x), static_cast<float>(y), z));
+  for (; p.y() <= box.max().y(); ++p.y()) {
+    auto w = row;
+    for (p.x() = box.min().x(); p.x() <= box.max().x(); ++p.x()) {
+      if (w[0] >= bias[0] && w[1] >= bias[1] && w[2] >= bias[2]) {
+        // p is in triangle
+        const float z = v0.z() + w[1].GetAs<float>()*zz[1]
+          + w[2].GetAs<float>()*zz[2];
+        callback((Vector3f() << p.cast<float>(), z).finished());
       }
+      w += pixelInc;
     }
+    row += rowInc;
   }
 }
 
@@ -115,7 +167,7 @@ void RastaManRenderer::DrawTriangle(const Vector4f& v0,
   auto normal =
     (v1 - v0).head<3>().cross((v2 - v0).head<3>()).normalized();
   normal = normal*.5f + Vector3f::Constant(.5f);
-  
+
   /*
    * Projection
    */
@@ -150,15 +202,15 @@ void RastaManRenderer::DrawTriangle(const Vector4f& v0,
    * Rasterization
    */
   RasterizeTriangle(c[0], c[1], c[2], [&] (const Vector3f& fragment) {
-    float& zBuffer = (*renderTarget_->GetZBuffer())(
-      static_cast<int>(fragment.x()), static_cast<int>(fragment.y()));
+    Vector2i pixel = fragment.head<2>().cast<int>();
+    float& zBuffer = (*renderTarget_->GetZBuffer())(pixel.x(), pixel.y());
 
     if (fragment.z() < zBuffer && 0 <= fragment.z() && fragment.z() <= 1) {
-      const Vector4f color = ProcessFragment(fragment);
-      (*renderTarget_->GetBackBuffer())(
-        static_cast<int>(fragment.x()), static_cast<int>(fragment.y())) =
-          // color;
-          (Vector4f() << normal, 1.f).finished();
+      Vector4f& backBuffer = (*renderTarget_->GetBackBuffer())(pixel.x(),
+                                                               pixel.y());
+      const auto color = ProcessFragment(fragment);
+      //backBuffer = color;
+      backBuffer = (Vector4f() << normal, 1.0f).finished();
       zBuffer = fragment.z();
     }
   });
