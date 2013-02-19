@@ -125,9 +125,9 @@ void RastaManRenderer::RasterizeTriangle(
   // Bias for fill rule
   static const FP eps = std::numeric_limits<FP>::epsilon();
   const Vector3FP bias(
-    IsTopLeft(iv1, iv2) ? 0 : eps,
-    IsTopLeft(iv2, iv0) ? 0 : eps,
-    IsTopLeft(iv0, iv1) ? 0 : eps);
+    IsTopLeft(iv1, iv2) ? FP(0) : eps,
+    IsTopLeft(iv2, iv0) ? FP(0) : eps,
+    IsTopLeft(iv0, iv1) ? FP(0) : eps);
 
   // Increments
   const Vector3FP pixelInc(
