@@ -5,7 +5,7 @@
 #include "Eigen/Geometry"
 
 #include "GL/glew.h"
-#include "GL/glfw.h"
+#include "GLFW/glfw3.h"
 
 #include <chrono>
 #include <cmath>
@@ -76,11 +76,13 @@ std::unique_ptr<IRenderer> renderers[kRendererCount];
 std::chrono::high_resolution_clock::time_point lastFrameTime;
 std::unique_ptr<Font> font;
 
-enum {
+enum RenderMode {
   RM_OPENGL,
   RM_RASTAMAN,
   RM_DIFFERENCE
-} renderMode = RM_OPENGL;
+};
+
+RenderMode renderMode = RM_OPENGL;
 
 Matrix4f getPerspectiveMatrix(float fieldOfView, float aspect, float zNear,
                               float zFar) {
@@ -101,7 +103,7 @@ Matrix4f getOrthographicMatrix(float left, float right, float bottom, float top,
     0, 0, 0, 1).finished();
 }
 
-void resize(int width, int height) {
+void resize(GLFWwindow* window, int width, int height) {
   ::width = width;
   ::height = height;
   for (auto& renderer : renderers) {
@@ -116,14 +118,14 @@ void resize(int width, int height) {
   //  getOrthographicMatrix(-aspect, aspect, -1.0f, 1.0f, 0.0f, 10.0f);
 }
 
-void special(int key, int state) {
-  if (state != GLFW_PRESS) {
+void special(GLFWwindow* window, int key, int scancode, int action, int mods) {
+  if (action != GLFW_PRESS && action != GLFW_REPEAT) {
     return;
   }
 
   switch (key) {
-    case GLFW_KEY_ESC:
-      glfwCloseWindow();
+    case GLFW_KEY_ESCAPE:
+      glfwSetWindowShouldClose(window, GLFW_TRUE);
       break;
     case GLFW_KEY_LEFT:
       rotation = Quaternionf(AngleAxisf(-.05f, Vector3f::UnitY())) * rotation;
@@ -137,40 +139,31 @@ void special(int key, int state) {
     case GLFW_KEY_DOWN:
       rotation = Quaternionf(AngleAxisf(.05f, Vector3f::UnitX())) * rotation;
       break;
-    case GLFW_KEY_PAGEUP:
+    case GLFW_KEY_PAGE_UP:
       translation.z() /= 1.05f;
       break;
-    case GLFW_KEY_PAGEDOWN:
+    case GLFW_KEY_PAGE_DOWN:
       translation.z() *= 1.05f;
       break;
-  }
-}
-
-void keyboard(int key, int state) {
-  if (state != GLFW_PRESS) {
-    return;
-  }
-
-  switch (key) {
-    case 'o':
+    case GLFW_KEY_O:
       renderMode = RM_OPENGL;
       break;
-    case 'r':
+    case GLFW_KEY_R:
       renderMode = RM_RASTAMAN;
       break;
-    case 'x':
+    case GLFW_KEY_X:
       renderMode = RM_DIFFERENCE;
       break;
-    case 'w':
+    case GLFW_KEY_W:
       translation.y() += 0.0625f;
       break;
-    case 's':
+    case GLFW_KEY_S:
       translation.y() -= 0.0625f;
       break;
-    case 'a':
+    case GLFW_KEY_A:
       translation.x() -= 0.0625f;
       break;
-    case 'd':
+    case GLFW_KEY_D:
       translation.x() += 0.0625f;
       break;
   }
@@ -191,7 +184,7 @@ void drawScene(IRenderer* renderer) {
   renderer->DrawTriangles(&vertices[0], &indices[0], indices.size());
 }
 
-void drawOverlay() {
+void drawOverlay(GLFWwindow* window) {
   const auto now = std::chrono::high_resolution_clock::now();
   const auto elapsedMillis =
     std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrameTime)
@@ -211,8 +204,8 @@ void drawOverlay() {
   int y = height;
   font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
 
-  Vector2i mouse;
-  glfwGetMousePos(&mouse.x(), &mouse.y());
+  Vector2d mouse;
+  glfwGetCursorPos(window, &mouse.x(), &mouse.y());
   if (mouse.x() < 0 || mouse.x() >= width || mouse.y() < 0 || mouse.y() >= height) {
     return;
   }
@@ -232,7 +225,7 @@ void drawOverlay() {
   font->Draw(ss.str().c_str(), 0, y -= font->GetLineHeight());
 }
 
-void render() {
+void render(GLFWwindow* window) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (renderMode == RM_OPENGL || renderMode == RM_DIFFERENCE) {
@@ -262,7 +255,7 @@ void render() {
     glDisable(GL_COLOR_LOGIC_OP);
   }
 
-  drawOverlay();
+  drawOverlay(window);
   
   //boost::scoped_array<char> data(new char[width*height*3]);
   //glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data.get());
@@ -305,17 +298,17 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  if (!glfwOpenWindow(width, height, 8, 8, 8, 0, 24, 0, GLFW_WINDOW)) {
+  const auto window = glfwCreateWindow(width, height, "RastaMan", nullptr, nullptr);
+  if (!window) {
     glfwTerminate();
     std::cerr << "Error opening window" << std::endl;
     return 1;
   }
 
-  glfwSetWindowTitle("RastaMan");
-  glfwSetCharCallback(keyboard);
-  glfwSetKeyCallback(special);
-  glfwSetWindowSizeCallback(resize);
-  glfwEnable(GLFW_KEY_REPEAT);
+  glfwMakeContextCurrent(window);
+
+  glfwSetKeyCallback(window, special);
+  glfwSetWindowSizeCallback(window, resize);
   glfwSwapInterval(0);
 
   glewInit();
@@ -334,12 +327,11 @@ int main(int argc, char* argv[]) {
 
   bool running = true;
 
-  while (running) {
+  while (!glfwWindowShouldClose(window)) {
     update();
-    render();
-    glfwSwapBuffers();
-
-    running = glfwGetWindowParam(GLFW_OPENED) != 0;
+    render(window);
+    glfwSwapBuffers(window);
+    glfwPollEvents();
   }
 
   glfwTerminate();
